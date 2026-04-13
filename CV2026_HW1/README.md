@@ -2,9 +2,9 @@
 
 ## introduction
 
-本研究旨在完成平面標定板之單眼相機校正，並以手刻 function 與OpenCV call function 進行比較。研究問題聚焦於：在不直接呼叫內建校正解算器的前提下，能否僅依賴棋盤格角點對應，穩定估測相機內參矩陣與多視角外參，並以重投影誤差驗證其可用性。
+本研究旨在完成平面標定板之單眼相機校正，並以手刻 function 與 OpenCV call function 進行比較。研究問題聚焦於：在不直接呼叫內建校正解算器的前提下，能否僅依賴棋盤格角點對應，穩定估測相機內參矩陣與多視角外參，並以重投影誤差驗證其可用性。
 
-方法上，本作業採用 Zhang calibration。首先，由多張棋盤格影像建立平面世界座標與像素座標對應，接著以 DLT 估測各視角 homography，再由 homography 所形成之線性約束求得對偶絕對二次曲面相關矩陣，進而恢復內參矩陣 K。於此基礎上，利用 K 與各視角 homography 分解旋轉與平移，並以正交化步驟修正旋轉矩陣，最後轉換為 rvec 與 tvec 形式。
+方法上，作業採用 Zhang calibration。首先，由多張棋盤格影像建立平面世界座標與像素座標對應，接著以 DLT 估測各視角 homography，再由 homography 所形成之線性約束求得對偶絕對二次曲面相關矩陣，進而恢復內參矩陣 K。於此基礎上，利用 K 與各視角 homography 分解旋轉與平移，並以正交化步驟修正旋轉矩陣，最後轉換為 rvec 與 tvec 形式。
 
 為評估結果的正確性與穩健性，本研究另以 OpenCV calibrateCamera 建立對照組，並輸出兩類指標：
 
@@ -34,16 +34,13 @@
 使用 calibrateCamera 取得 cv_mtx、cv_dist、cv_rvecs、cv_tvecs。接著計算兩種方法之重投影誤差差值、內參差值（fx, fy, cx, cy, skew），以及每張影像的姿態差異：旋轉差以相對旋轉矩陣角度表示，平移差以向量 L2 norm 表示。
 
 7. result output
-最終輸出 calibration_report.txt（整合誤差、內參、差異統計）、per_view_pose_diff.csv（逐視角差異），並產生兩張外參 3D 視覺化圖（手刻法與 OpenCV 各一張），以便進行質化檢查與報告撰寫。
+最終輸出 calibration_report.txt（整合誤差、內參、差異統計）、per_view_pose_diff.csv（逐視角差異），並產生兩張外參 3D 視覺化圖（手刻與 OpenCV 各一張）。
 
 ## Setup
 
 ### Windows (PowerShell)
 
-[TOC]
-:::success
-可自行選擇容器
-:::
+> Note: Python 環境可自行選擇（例如 venv、conda）。以下示範使用 venv。
 
 ```powershell
 py -3.13 -m venv .env
@@ -60,16 +57,8 @@ python camera_calibration.py
 
 ## Switch Dataset
 
-預設讀取：
-
 ```python
-images = glob.glob('data/*.jpg')
-```
-
-如果要換成自己的資料，改成：
-
-```python
-images = glob.glob('my_data/*.jpg')
+images = glob.glob('[self_data]/*.jpg')
 ```
 
 ## Output detail

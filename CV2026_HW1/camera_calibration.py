@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import camera_calibration_show_extrinsics as show
 from PIL import Image
 
-corner_x = 7
+corner_x = 10
 corner_y = 7
 objp = np.zeros((corner_x*corner_y,3), np.float32)
 objp[:,:2] = np.mgrid[0:corner_x, 0:corner_y].T.reshape(-1,2)
@@ -16,7 +16,7 @@ objpoints = [] # 3d points in real world space
 imgpoints = [] # 2d points in image plane.
 
 # Make a list of calibration images
-images = glob.glob('data/*.jpg')
+images = glob.glob('my_data/*.jpg')
 if len(images) == 0:
     raise RuntimeError('No calibration images found in data/*.jpg')
 

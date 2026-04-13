@@ -1,0 +1,19 @@
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.env/
+.venv/
+venv/
+
+# Data and generated outputs
+dataset/
+data/
+my_data/
+output/
+
+# Common local/tooling files
+.vscode/
+.idea/
+*.log

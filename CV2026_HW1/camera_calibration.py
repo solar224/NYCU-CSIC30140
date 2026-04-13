@@ -5,10 +5,7 @@ import os
 import matplotlib.pyplot as plt
 import camera_calibration_show_extrinsics as show
 from PIL import Image
-# prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
-# (8,6) is for the given testing images.
-# If you use the another data (e.g. pictures you take by your smartphone), 
-# you need to set the corresponding numbers.
+
 corner_x = 7
 corner_y = 7
 objp = np.zeros((corner_x*corner_y,3), np.float32)
@@ -57,9 +54,8 @@ for idx, fname in enumerate(images):
 #######################################################################################################
 print('Camera calibration...')
 img_size = gray.shape[::-1]
-# You need to comment these functions and write your calibration function from scratch.
-# Notice that rvecs is rotation vector, not the rotation matrix, and tvecs is translation vector.
-# In practice, you'll derive extrinsics matrixes directly. The shape must be [pts_num,3,4], and use them to plot.
+
+# [TODO] Compute homography H from world points (X, Y) to image points (u, v) using DLT.
 def compute_homography(world_xy, image_uv):
     A = []
     for (X, Y), (u, v) in zip(world_xy, image_uv):
@@ -70,7 +66,7 @@ def compute_homography(world_xy, image_uv):
     H = Vt[-1].reshape(3, 3)
     return H / H[2, 2]
 
-
+# [TODO] Compute the vector v_ij from homography H for indices i, j.
 def v_ij(H, i, j):
     h = H.T
     return np.array([
@@ -82,7 +78,7 @@ def v_ij(H, i, j):
         h[i, 2] * h[j, 2],
     ], dtype=np.float64)
 
-
+# [TODO] Recover the intrinsic matrix K from the matrix B using Cholesky decomposition.
 def intrinsic_from_B(B):
     # B = K^-T K^-1; recover K by Cholesky on B.
     if np.linalg.det(B) < 0:
@@ -99,7 +95,38 @@ def intrinsic_from_B(B):
         K[:, 1] *= -1
     return K
 
+# Compute average reprojection error over all calibration views.
+def mean_reprojection_error(K, dist, rvecs, tvecs, objpoints, imgpoints):
+    total_error = 0.0
+    total_points = 0
+    for i, obj_pts in enumerate(objpoints):
+        proj_pts, _ = cv2.projectPoints(
+            obj_pts,
+            rvecs[i].reshape(3, 1),
+            tvecs[i].reshape(3, 1),
+            K,
+            dist,
+        )
+        err = np.linalg.norm(
+            imgpoints[i].reshape(-1, 2) - proj_pts.reshape(-1, 2),
+            axis=1,
+        )
+        total_error += err.sum()
+        total_points += len(err)
+    if total_points == 0:
+        return np.nan
+    return total_error / total_points
 
+
+def rotation_angle_diff_deg(rvec_a, rvec_b):
+    R_a, _ = cv2.Rodrigues(rvec_a.reshape(3, 1))
+    R_b, _ = cv2.Rodrigues(rvec_b.reshape(3, 1))
+    R_delta = R_a @ R_b.T
+    trace_val = np.trace(R_delta)
+    cos_theta = np.clip((trace_val - 1.0) * 0.5, -1.0, 1.0)
+    return np.degrees(np.arccos(cos_theta))
+
+# [TODO] Compute the homographies, intrinsic matrix, and extrinsic parameters for each image.
 if len(objpoints) < 3:
     raise RuntimeError('Need at least 3 valid chessboard images for calibration.')
 
@@ -157,81 +184,182 @@ rvecs = np.asarray(rvecs, dtype=np.float64)
 tvecs = np.asarray(tvecs, dtype=np.float64)
 extrinsics = np.asarray(extrinsics, dtype=np.float64)
 
-# Save calibration outputs for report and grading.
-os.makedirs('output', exist_ok=True)
-np.savetxt('output/intrinsic_matrix.txt', mtx, fmt='%.10f')
-np.save('output/extrinsics_rvec_tvec.npy', extrinsics)
-np.save('output/rvecs.npy', rvecs)
-np.save('output/tvecs.npy', tvecs)
+custom_reproj_error = mean_reprojection_error(
+    mtx,
+    dist,
+    rvecs,
+    tvecs,
+    objpoints,
+    imgpoints,
+)
 
-with open('output/calibration_summary.txt', 'w', encoding='utf-8') as f:
-    f.write('Camera Calibration Summary\n')
+# OpenCV baseline for comparison.
+cv_ret, cv_mtx, cv_dist, cv_rvecs, cv_tvecs = cv2.calibrateCamera(
+    objpoints,
+    imgpoints,
+    img_size,
+    None,
+    None,
+)
+cv_rvecs = np.asarray([rv.reshape(3) for rv in cv_rvecs], dtype=np.float64)
+cv_tvecs = np.asarray([tv.reshape(3) for tv in cv_tvecs], dtype=np.float64)
+cv_extrinsics = np.asarray(
+    [np.concatenate((rv, tv)) for rv, tv in zip(cv_rvecs, cv_tvecs)],
+    dtype=np.float64,
+)
+cv_reproj_error = mean_reprojection_error(
+    cv_mtx,
+    cv_dist,
+    cv_rvecs,
+    cv_tvecs,
+    objpoints,
+    imgpoints,
+)
+
+# Per-view pose differences between from-scratch and OpenCV baselines.
+rot_diff_deg = np.asarray(
+    [rotation_angle_diff_deg(rv, cv_rv) for rv, cv_rv in zip(rvecs, cv_rvecs)],
+    dtype=np.float64,
+)
+t_diff = np.linalg.norm(tvecs - cv_tvecs, axis=1)
+pose_diff_table = np.column_stack((
+    np.arange(len(rot_diff_deg), dtype=np.float64),
+    rot_diff_deg,
+    t_diff,
+))
+worst_idx = int(np.argmax(rot_diff_deg + t_diff))
+
+intrinsic_names = ['fx', 'fy', 'cx', 'cy', 'skew']
+custom_intrinsic_vals = np.array([mtx[0, 0], mtx[1, 1], mtx[0, 2], mtx[1, 2], mtx[0, 1]], dtype=np.float64)
+cv_intrinsic_vals = np.array([cv_mtx[0, 0], cv_mtx[1, 1], cv_mtx[0, 2], cv_mtx[1, 2], cv_mtx[0, 1]], dtype=np.float64)
+intrinsic_abs_diff = custom_intrinsic_vals - cv_intrinsic_vals
+intrinsic_pct_diff = np.where(
+    np.abs(cv_intrinsic_vals) > 1e-12,
+    100.0 * intrinsic_abs_diff / cv_intrinsic_vals,
+    np.nan,
+)
+
+# [TODO] Save calibration outputs for report and grading.
+os.makedirs('output', exist_ok=True)
+np.savetxt(
+    'output/per_view_pose_diff.csv',
+    pose_diff_table,
+    fmt=['%d', '%.8f', '%.8f'],
+    delimiter=',',
+    header='view_index,rotation_diff_deg,translation_diff_norm',
+    comments='',
+)
+
+with open('output/calibration_report.txt', 'w', encoding='utf-8') as f:
+    f.write('Camera Calibration Report\n')
+    f.write('=========================\n\n')
     f.write(f'Valid images used: {len(objpoints)} / {len(images)}\n')
     f.write(f'Image size (w, h): {img_size}\n\n')
-    f.write('Intrinsic matrix K:\n')
+
+    f.write('Error summary\n')
+    f.write(f'From-scratch mean reprojection error (pixel): {custom_reproj_error:.6f}\n')
+    f.write(f'OpenCV mean reprojection error (pixel): {cv_reproj_error:.6f}\n')
+    f.write(f'OpenCV calibrateCamera RMS: {cv_ret:.6f}\n')
+    f.write(f'Mean reprojection error difference (scratch - OpenCV): {custom_reproj_error - cv_reproj_error:.6f}\n\n')
+
+    f.write('From-scratch intrinsic matrix K\n')
     np.savetxt(f, mtx, fmt='%.10f')
+    f.write('\nOpenCV intrinsic matrix K\n')
+    np.savetxt(f, cv_mtx, fmt='%.10f')
+    f.write('\nOpenCV distortion coefficients\n')
+    np.savetxt(f, cv_dist.reshape(1, -1), fmt='%.10f')
+    f.write(f'\nFrobenius norm of K difference: {np.linalg.norm(mtx - cv_mtx):.6f}\n\n')
 
-print('Saved: output/intrinsic_matrix.txt')
-print('Saved: output/extrinsics_rvec_tvec.npy')
-print('Saved: output/rvecs.npy')
-print('Saved: output/tvecs.npy')
-print('Saved: output/calibration_summary.txt')
-"""
-Write your code here
+    f.write('Intrinsic parameter comparison\n')
+    f.write('name,from_scratch,opencv,abs_diff,pct_diff\n')
+    for i, name in enumerate(intrinsic_names):
+        pct_val = intrinsic_pct_diff[i]
+        pct_str = 'nan' if np.isnan(pct_val) else f'{pct_val:.6f}'
+        f.write(
+            f'{name},{custom_intrinsic_vals[i]:.8f},{cv_intrinsic_vals[i]:.8f},'
+            f'{intrinsic_abs_diff[i]:.8f},{pct_str}\n'
+        )
+    f.write('\n')
+
+    combined = rot_diff_deg + t_diff
+    top_k = np.argsort(-combined)[:3]
+    f.write('Pose difference statistics\n')
+    f.write(f'Rotation diff mean (deg): {rot_diff_deg.mean():.6f}\n')
+    f.write(f'Rotation diff max (deg): {rot_diff_deg.max():.6f}\n')
+    f.write(f'Translation diff mean (L2 norm): {t_diff.mean():.6f}\n')
+    f.write(f'Translation diff max (L2 norm): {t_diff.max():.6f}\n')
+    f.write(f'Largest combined difference view index: {worst_idx}\n\n')
+
+    f.write('Top 3 views by combined pose difference\n')
+    f.write('view_index,rotation_diff_deg,translation_diff_norm,combined_score\n')
+    for idx in top_k:
+        f.write(
+            f'{idx},{rot_diff_deg[idx]:.8f},{t_diff[idx]:.8f},{combined[idx]:.8f}\n'
+        )
+
+print('Saved: output/per_view_pose_diff.csv')
+print('Saved: output/calibration_report.txt')
+
+def save_extrinsics_plot(camera_matrix, extrinsics_data, output_path, title):
+    fig = plt.figure(figsize=(10, 10))
+    ax = fig.add_subplot(111, projection='3d')
+
+    cam_width = 0.064 / 0.1
+    cam_height = 0.032 / 0.1
+    scale_focal = 1600
+    board_width = 8
+    board_height = 6
+    square_size = 1
+
+    min_values, max_values = show.draw_camera_boards(
+        ax,
+        camera_matrix,
+        cam_width,
+        cam_height,
+        scale_focal,
+        extrinsics_data,
+        board_width,
+        board_height,
+        square_size,
+        True,
+    )
+
+    X_min = min_values[0]
+    X_max = max_values[0]
+    Y_min = min_values[1]
+    Y_max = max_values[1]
+    Z_min = min_values[2]
+    Z_max = max_values[2]
+    max_range = np.array([X_max - X_min, Y_max - Y_min, Z_max - Z_min]).max() / 2.0
+
+    mid_x = (X_max + X_min) * 0.5
+    mid_y = (Y_max + Y_min) * 0.5
+    mid_z = (Z_max + Z_min) * 0.5
+    ax.set_xlim(mid_x - max_range, mid_x + max_range)
+    ax.set_ylim(mid_y - max_range, 0)
+    ax.set_zlim(mid_z - max_range, mid_z + max_range)
+
+    ax.set_xlabel('x')
+    ax.set_ylabel('z')
+    ax.set_zlabel('-y')
+    ax.set_title(title)
+    fig.savefig(output_path, dpi=200, bbox_inches='tight')
+    print(f'Saved: {output_path}')
 
 
-
-
-"""
-# show the camera extrinsics
+# show and save extrinsics plots
 print('Show the camera extrinsics')
-# plot setting
-# You can modify it for better visualization
-fig = plt.figure(figsize=(10, 10))
-ax = fig.add_subplot(111, projection='3d')
-# camera setting
-camera_matrix = mtx
-cam_width = 0.064/0.1
-cam_height = 0.032/0.1
-scale_focal = 1600
-# chess board setting
-board_width = 8
-board_height = 6
-square_size = 1
-# display
-# True -> fix board, moving cameras
-# False -> fix camera, moving boards
-min_values, max_values = show.draw_camera_boards(ax, camera_matrix, cam_width, cam_height,
-                                                scale_focal, extrinsics, board_width,
-                                                board_height, square_size, True)
-
-X_min = min_values[0]
-X_max = max_values[0]
-Y_min = min_values[1]
-Y_max = max_values[1]
-Z_min = min_values[2]
-Z_max = max_values[2]
-max_range = np.array([X_max-X_min, Y_max-Y_min, Z_max-Z_min]).max() / 2.0
-
-mid_x = (X_max+X_min) * 0.5
-mid_y = (Y_max+Y_min) * 0.5
-mid_z = (Z_max+Z_min) * 0.5
-ax.set_xlim(mid_x - max_range, mid_x + max_range)
-ax.set_ylim(mid_y - max_range, 0)
-ax.set_zlim(mid_z - max_range, mid_z + max_range)
-
-ax.set_xlabel('x')
-ax.set_ylabel('z')
-ax.set_zlabel('-y')
-ax.set_title('Extrinsic Parameters Visualization')
-plt.savefig('output/extrinsics_plot.png', dpi=200, bbox_inches='tight')
-print('Saved: output/extrinsics_plot.png')
+save_extrinsics_plot(
+    mtx,
+    extrinsics,
+    'output/extrinsics_plot.png',
+    'Extrinsic Parameters Visualization (From-scratch)',
+)
+save_extrinsics_plot(
+    cv_mtx,
+    cv_extrinsics,
+    'output/cv_extrinsics_plot.png',
+    'Extrinsic Parameters Visualization (OpenCV)',
+)
 plt.show()
 
-#animation for rotating plot
-"""
-for angle in range(0, 360):
-    ax.view_init(30, angle)
-    plt.draw()
-    plt.pause(.001)
-"""

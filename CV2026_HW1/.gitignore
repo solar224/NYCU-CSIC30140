@@ -8,9 +8,9 @@ __pycache__/
 venv/
 
 # Data and generated outputs
-dataset/
-data/
-my_data/
+/dataset/
+/data/
+/my_data/
 
 # Common local/tooling files
 .vscode/

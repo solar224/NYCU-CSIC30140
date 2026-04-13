@@ -1,0 +1,47 @@
+Camera Calibration Report
+=========================
+
+Valid images used: 10 / 10
+Image size (w, h): (2936, 3916)
+
+Error summary
+From-scratch mean reprojection error (pixel): 19.954865
+OpenCV mean reprojection error (pixel): 5.096620
+OpenCV calibrateCamera RMS: 6.824567
+Mean reprojection error difference (scratch - OpenCV): 14.858244
+
+From-scratch intrinsic matrix K
+3400.3370110913 -35.2543657811 1475.6844143761
+0.0000000000 3349.3594594118 1408.2286931938
+0.0000000000 0.0000000000 1.0000000000
+
+OpenCV intrinsic matrix K
+2701.9297874398 0.0000000000 1538.2070453012
+0.0000000000 2738.0917181922 1960.1346875338
+0.0000000000 0.0000000000 1.0000000000
+
+OpenCV distortion coefficients
+0.1213107075 -0.7031583388 -0.0272802074 -0.0053746276 0.6984069086
+
+Frobenius norm of K difference: 1082.207502
+
+Intrinsic parameter comparison
+name,from_scratch,opencv,abs_diff,pct_diff
+fx,3400.33701109,2701.92978744,698.40722365,25.848459
+fy,3349.35945941,2738.09171819,611.26774122,22.324590
+cx,1475.68441438,1538.20704530,-62.52263093,-4.064643
+cy,1408.22869319,1960.13468753,-551.90599434,-28.156534
+skew,-35.25436578,0.00000000,-35.25436578,nan
+
+Pose difference statistics
+Rotation diff mean (deg): 5.891166
+Rotation diff max (deg): 9.501486
+Translation diff mean (L2 norm): 3.493763
+Translation diff max (L2 norm): 4.614359
+Largest combined difference view index: 4
+
+Top 3 views by combined pose difference
+view_index,rotation_diff_deg,translation_diff_norm,combined_score
+4,9.50148568,3.88372629,13.38521197
+7,8.22668178,4.61435906,12.84104084
+5,7.90688900,4.15192107,12.05881007

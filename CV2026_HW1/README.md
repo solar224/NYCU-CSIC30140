@@ -1,46 +1,46 @@
 # Camera Calibration HW1
 
-## introduction
+## Introduction
 
-本研究旨在完成平面標定板之單眼相機校正，並以手刻 function 與 OpenCV call function 進行比較。研究問題聚焦於：在不直接呼叫內建校正解算器的前提下，能否僅依賴棋盤格角點對應，穩定估測相機內參矩陣與多視角外參，並以重投影誤差驗證其可用性。
+This study aims to perform monocular camera calibration using a planar calibration board and to compare a hand-crafted implementation with OpenCV’s built-in calibration function. The main research question is whether it is possible to stably estimate the camera intrinsic matrix and multi-view extrinsic parameters solely from chessboard corner correspondences, without directly calling the built-in calibration solver, and to validate the usability of the results through reprojection error.
 
-方法上，作業採用 Zhang calibration。首先，由多張棋盤格影像建立平面世界座標與像素座標對應，接著以 DLT 估測各視角 homography，再由 homography 所形成之線性約束求得對偶絕對二次曲面相關矩陣，進而恢復內參矩陣 K。於此基礎上，利用 K 與各視角 homography 分解旋轉與平移，並以正交化步驟修正旋轉矩陣，最後轉換為 rvec 與 tvec 形式。
+In terms of methodology, this assignment adopts Zhang’s calibration method. First, correspondences between planar world coordinates and image pixel coordinates are established from multiple chessboard images. Next, the homography of each view is estimated using DLT. The linear constraints induced by these homographies are then used to solve for the matrix related to the dual image of the absolute conic, from which the intrinsic matrix \(K\) is recovered. Based on \(K\) and the homography of each view, the rotation and translation components are decomposed, and an orthogonalization step is applied to refine the rotation matrix. Finally, the results are converted into the forms of rvec and tvec.
 
-為評估結果的正確性與穩健性，本研究另以 OpenCV calibrateCamera 建立對照組，並輸出兩類指標：
+To evaluate the correctness and robustness of the results, this study also uses OpenCV’s `calibrateCamera` as a baseline and reports two types of metrics:
 
-1. 為像素域重投影誤差
-2. 為參數域差異（內參差異、每視角差異）
+1. Reprojection error in the pixel domain  
+2. Parameter-domain differences, including intrinsic parameter differences and per-view pose differences
 
-## implement
+## Implement
 
-本節對實作流程進行技術性說明，對應程式主體可分為七個階段。
+This section describes the technical workflow of the implementation, which can be divided into seven stages.
 
-1. 特徵點偵測與資料建構
-先建立棋盤格平面座標 objp（z=0），並逐張讀取影像，透過 findChessboardCorners 擷取角點。每張成功偵測之影像均累積一組 object points 與 image points，作為後續 homography 與參數估測輸入。
+1. **Feature Detection and Data Construction**  
+   First, the planar chessboard coordinates `objp` are created with \(z=0\). Each image is then loaded one by one, and chessboard corners are detected using `findChessboardCorners`. For every successfully detected image, one set of object points and image points is collected as input for subsequent homography and parameter estimation.
 
-2. 單視角 homography 估測
-對每張影像，利用世界平面點 (X, Y) 與影像點 (u, v) 建立 DLT 線性系統 A，透過 SVD 取得最小奇異值對應解，重塑為 3x3 矩陣 H，並以 H[2,2] 進行尺度正規化。
+2. **Single-View Homography Estimation**  
+   For each image, a DLT linear system \(A\) is constructed from the world planar points \((X, Y)\) and image points \((u, v)\). SVD is then used to obtain the solution corresponding to the smallest singular value, which is reshaped into a \(3 \times 3\) matrix \(H\). Finally, scale normalization is performed using `H[2,2]`.
 
-3. 內參線性解（Zhang constraints）
-根據各視角 H 的列向量，構造 v_ij 向量並疊加成矩陣 V，求解 Vb=0 得到對稱矩陣 B 參數。接著由 B=K^{-T}K^{-1} 關係恢復內參。實作上先檢查 B 的正定性，必要時加入微小對角修正，再以 Cholesky 分解求得 K，並進行符號與尺度校正以確保 K[2,2]=1。
+3. **Linear Intrinsic Solution (Zhang Constraints)**  
+   Based on the column vectors of each homography \(H\), the vectors \(v_{ij}\) are constructed and stacked into a matrix \(V\). Solving \(Vb=0\) yields the parameters of the symmetric matrix \(B\). The intrinsic matrix is then recovered from the relationship \(B = K^{-T}K^{-1}\). In practice, the positive-definiteness of \(B\) is checked first. If necessary, a small diagonal perturbation is added, and then Cholesky decomposition is applied to recover \(K\). Sign and scale corrections are further performed to ensure that `K[2,2] = 1`.
 
-4. 外參恢復與旋轉正交化
-已知 K 後，對每張 H 計算尺度因子 lambda，得到 r1、r2、t，並以 r3=r1×r2 補齊旋轉基底。由於數值誤差會破壞正交性，故使用 SVD 對近似旋轉矩陣做投影修正，使其落在 SO(3)，最後轉為 Rodrigues 向量 rvec，配對 tvec 作為每視角外參。
+4. **Extrinsic Recovery and Rotation Orthogonalization**  
+   Once \(K\) is known, a scale factor \(\lambda\) is computed for each homography \(H\), and then \(r_1\), \(r_2\), and \(t\) are obtained. The third rotation basis vector is completed by \(r_3 = r_1 \times r_2\). Since numerical errors may break orthogonality, SVD is used to project the approximate rotation matrix onto \(SO(3)\). The final rotation matrix is then converted into a Rodrigues vector `rvec` and paired with `tvec` as the extrinsic parameters for each view.
 
-5. 重投影誤差評估
-實作 mean_reprojection_error：以 projectPoints 將 3D 角點重投影至影像平面，計算與偵測角點之 L2 距離，並對所有點取平均，作為手刻流程在像素域的主要效能指標。
+5. **Reprojection Error Evaluation**  
+   The function `mean_reprojection_error` is implemented to project 3D corner points back onto the image plane using `projectPoints`, compute the L2 distance between projected points and detected corners, and average the results over all points. This serves as the main pixel-domain performance metric for the hand-crafted pipeline.
 
-6. OpenCV 對照組與姿態差異分析
-使用 calibrateCamera 取得 cv_mtx、cv_dist、cv_rvecs、cv_tvecs。接著計算兩種方法之重投影誤差差值、內參差值（fx, fy, cx, cy, skew），以及每張影像的姿態差異：旋轉差以相對旋轉矩陣角度表示，平移差以向量 L2 norm 表示。
+6. **OpenCV Baseline and Pose Difference Analysis**  
+   OpenCV’s `calibrateCamera` is used to obtain `cv_mtx`, `cv_dist`, `cv_rvecs`, and `cv_tvecs`. The reprojection error difference between the two methods is then computed, along with intrinsic parameter differences (`fx`, `fy`, `cx`, `cy`, and `skew`) and per-image pose differences. Rotation difference is measured by the angle of the relative rotation matrix, while translation difference is measured by the L2 norm of the translation vector difference.
 
-7. result output
-最終輸出 calibration_report.txt（整合誤差、內參、差異統計）、per_view_pose_diff.csv（逐視角差異），並產生兩張外參 3D 視覺化圖（手刻與 OpenCV 各一張）。
+7. **Result Output**  
+   The final outputs include `calibration_report.txt` (containing integrated error analysis, intrinsic parameters, and difference statistics), `per_view_pose_diff.csv` (containing per-view differences), and two 3D visualizations of extrinsic parameters (one for the hand-crafted implementation and one for OpenCV).
 
 ## Setup
 
 ### Windows (PowerShell)
 
-> Note: Python 環境可自行選擇（例如 venv、conda）。以下示範使用 venv。
+> Note: You may choose any Python environment manager you prefer, such as `venv` or `conda`. The example below uses `venv`.
 
 ```powershell
 py -3.13 -m venv .env
@@ -72,14 +72,12 @@ images = glob.glob('[self_data]/*.jpg')
 ```
 
 - `calibration_report.txt`
-      手刻與 OpenCV 的誤差、兩組 intrinsic matrix、OpenCV distortion coeffs、
-      內參差異（abs / percent）、外參差異統計與 Top-3 差異視角。
+      Contains the errors of the hand-crafted implementation and OpenCV, the two intrinsic matrices, OpenCV distortion coefficients, intrinsic parameter differences (absolute / percentage), extrinsic difference statistics, and the top 3 views with the largest discrepancies.
 
 - `per_view_pose_diff.csv`
-      每張圖的 pose diff（rotation difference / translation difference）。
-
+      Contains the pose difference of each image, including rotation difference and translation difference.
 - `extrinsics_plot.png`
-      手刻法外參 3D 視覺化。
+      3D visualization of the extrinsic parameters from the hand-crafted implementation.
 
 - `cv_extrinsics_plot.png`
-      OpenCV baseline 外參 3D 視覺化。
+      3D visualization of the extrinsic parameters from the OpenCV baseline.

@@ -55,7 +55,7 @@ for idx, fname in enumerate(images):
 print('Camera calibration...')
 img_size = gray.shape[::-1]
 
-# [TODO] Compute homography H from world points (X, Y) to image points (u, v) using DLT.
+# [TODO DONE] Compute homography H from world points (X, Y) to image points (u, v) using DLT.
 def compute_homography(world_xy, image_uv):
     A = []
     for (X, Y), (u, v) in zip(world_xy, image_uv):
@@ -66,7 +66,7 @@ def compute_homography(world_xy, image_uv):
     H = Vt[-1].reshape(3, 3)
     return H / H[2, 2]
 
-# [TODO] Compute the vector v_ij from homography H for indices i, j.
+# [TODO DONE] Compute the vector v_ij from homography H for indices i, j.
 def v_ij(H, i, j):
     h = H.T
     return np.array([
@@ -78,7 +78,7 @@ def v_ij(H, i, j):
         h[i, 2] * h[j, 2],
     ], dtype=np.float64)
 
-# [TODO] Recover the intrinsic matrix K from the matrix B using Cholesky decomposition.
+# [TODO DONE] Recover the intrinsic matrix K from the matrix B using Cholesky decomposition.
 def intrinsic_from_B(B):
     # B = K^-T K^-1; recover K by Cholesky on B.
     if np.linalg.det(B) < 0:
@@ -95,7 +95,7 @@ def intrinsic_from_B(B):
         K[:, 1] *= -1
     return K
 
-# Compute average reprojection error over all calibration views.
+# [TODO DONE] Compute average reprojection error over all calibration views.
 def mean_reprojection_error(K, dist, rvecs, tvecs, objpoints, imgpoints):
     total_error = 0.0
     total_points = 0
@@ -126,10 +126,10 @@ def rotation_angle_diff_deg(rvec_a, rvec_b):
     cos_theta = np.clip((trace_val - 1.0) * 0.5, -1.0, 1.0)
     return np.degrees(np.arccos(cos_theta))
 
-# [TODO] Compute the homographies, intrinsic matrix, and extrinsic parameters for each image.
 if len(objpoints) < 3:
     raise RuntimeError('Need at least 3 valid chessboard images for calibration.')
 
+# [TODO DONE] Compute the homographies, intrinsic matrix, and extrinsic parameters for each image.
 homographies = []
 for obj_pts, img_pts in zip(objpoints, imgpoints):
     world_xy = obj_pts[:, :2]
@@ -239,7 +239,7 @@ intrinsic_pct_diff = np.where(
     np.nan,
 )
 
-# [TODO] Save calibration outputs for report and grading.
+# [TODO DONE] Save calibration outputs for report and grading.
 os.makedirs('output', exist_ok=True)
 np.savetxt(
     'output/per_view_pose_diff.csv',

@@ -70,9 +70,9 @@ results = sfm_main('Mesona');
   │     ├── model1.mtl
   │     └── sfm_results.mat
   └── /Statue
-    ├── model1.obj
-    ├── model1.mtl
-    └── sfm_results.mat
+        ├── model1.obj
+        ├── model1.mtl
+        └── sfm_results.mat
 ```
 
 - `model1.obj`  

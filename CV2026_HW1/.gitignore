@@ -7,11 +7,6 @@ __pycache__/
 .venv/
 venv/
 
-# Data and generated outputs
-/dataset/
-/data/
-/my_data/
-
 # Common local/tooling files
 .vscode/
 .idea/

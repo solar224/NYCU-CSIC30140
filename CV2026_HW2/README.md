@@ -8,6 +8,8 @@ Supported datasets:
 
 1. `Statue` (`Statue1.bmp`, `Statue2.bmp`, `Statue_calib.txt`)
 2. `Mesona` (`Mesona1.JPG`, `Mesona2.JPG`, `Mesona_calib.txt`)
+3. `Matcha` (`Matcha1.jpg`, `Matcha2.jpg`, `Matcha_calib.txt`)
+4. `Medicine` (`Medicine1.jpg`, `Medicine2.jpg`, `Medicine_calib.txt`)
 
 The final outputs include recovered camera matrices, sparse 3D points, visibility-filtered mesh data, and model files that can be directly loaded into Blender.
 
@@ -36,30 +38,52 @@ This section describes the technical workflow of the implementation, which can b
 Main scripts:
 
 - `sfm_main.m`
+- `generate_calib.m`
+
+TA:
+
 - `obj_main.m`
 - `CheckVisible.m`
 
 ## Setup
 
-1. Install MATLAB.
-2. Install Computer Vision Toolbox in MATLAB.
-3. (Optional) Install Blender for model visualization.
-4. Open this folder in VS Code.
-5. Ensure the `data/` and `imgs/` folders contain the required inputs.
+1. Install MATLAB (Install Computer Vision Toolbox in MATLAB).
+2. (Optional) Install Blender for model visualization.
+3. Open this folder in VS Code.
+4. Ensure the `data/` and `imgs/` folders contain the required inputs.
 
 > Note: Must install [MATLAB](https://www.mathworks.com/downloads/) and [Blender](https://www.blender.org/).
 
 ## Exec
 
+> Note:
+>
+> - The `matlab` command must be available in your system `PATH` (set this manually).
+> - If `matlab` is not in `PATH`, run MATLAB with its full executable path.
+
 ```powershell
-matlab -batch "cd('D:/NYCU-CSIC30140/CV2026_HW2'); results = sfm_main('Statue');"
+matlab -batch "results = sfm_main('Statue');"
+"C:\Program Files\MATLAB\R2024b\bin\matlab.exe" -batch "results = sfm_main('Statue');"
 ```
 
 ## Switch Dataset
 
 ```matlab
 results = sfm_main('Mesona');
+results = sfm_main('Snorlax');
 ```
+
+## Generate calibration txt for new images
+
+If you add a new dataset (or more views), generate a Mesona-style calibration file:
+
+```matlab
+% Generate K1..K5 from Snorlax1.jpg ~ Snorlax5.jpg
+generate_calib_from_images('Snorlax', 'NumCameras', 5, 'HorizontalFovDeg', 69, 'Overwrite', true);
+```
+
+This writes `data/Snorlax_calib.txt` with `Camera A/B/...` and `K1/K2/...` blocks.
+Current `sfm_main` uses `K1` and `K2` for two-view reconstruction.
 
 ## Output detail
 
@@ -86,4 +110,4 @@ results = sfm_main('Mesona');
 
 ## How to use Blender
 
-See [Blender.md](./Blender.md).
+See [Blender.md](./guide/Blender.md).

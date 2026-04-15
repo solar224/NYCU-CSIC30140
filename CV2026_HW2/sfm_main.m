@@ -1,6 +1,6 @@
 function results = sfm_main(datasetName, outputDir)
 %SFM_MAIN Reconstruct sparse 3D points from a calibrated image pair.
-%   results = sfm_main('Statue') or sfm_main('Mesona')
+%   results = sfm_main('Statue') or sfm_main('Mesona') or anything else you like (but must be in data/ and have corresponding calib.txt)
 %
 % Pipeline:
 % 1) Feature detection + matching
@@ -164,12 +164,16 @@ switch name
         imgPath1 = fullfile(dataDir, 'Statue1.bmp');
         imgPath2 = fullfile(dataDir, 'Statue2.bmp');
         calibPath = fullfile(dataDir, 'Statue_calib.txt');
-    case 'my_dataset'
-        imgPath1 = fullfile(dataDir, 'MyDataset1.jpg');
-        imgPath2 = fullfile(dataDir, 'MyDataset2.jpg');
-        calibPath = fullfile(dataDir, 'MyDataset_calib.txt');
+    case 'matcha'
+        imgPath1 = fullfile(dataDir, 'Matcha1.jpg');
+        imgPath2 = fullfile(dataDir, 'Matcha2.jpg');
+        calibPath = fullfile(dataDir, 'Matcha_calib.txt');
+    case 'medicine'
+        imgPath1 = fullfile(dataDir, 'Medicine1.jpg');
+        imgPath2 = fullfile(dataDir, 'Medicine2.jpg');
+        calibPath = fullfile(dataDir, 'Medicine_calib.txt');
     otherwise
-        error('Unknown datasetName: %s (use ''Mesona'' or ''Statue'' or ''MyDataset'')', datasetName);
+        error('Unknown datasetName: %s (use ''Mesona'' or ''Statue'' or ''Matcha'' or ''Medicine'')', datasetName);
 end
 
 if ~exist(imgPath1, 'file') || ~exist(imgPath2, 'file') || ~exist(calibPath, 'file')

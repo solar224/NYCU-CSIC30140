@@ -8,8 +8,8 @@ Supported datasets:
 
 1. `Statue` (`Statue1.bmp`, `Statue2.bmp`, `Statue_calib.txt`)
 2. `Mesona` (`Mesona1.JPG`, `Mesona2.JPG`, `Mesona_calib.txt`)
-3. `Matcha` (`Matcha1.jpg`, `Matcha2.jpg`, `Matcha_calib.txt`)
-4. `Medicine` (`Medicine1.jpg`, `Medicine2.jpg`, `Medicine_calib.txt`)
+3. `Matcha` (`my_data/Matcha1.jpg`, `my_data/Matcha2.jpg`, `my_data/Matcha_calib.txt`)
+4. `Medicine` (`my_data/Medicine1.jpg`, `my_data/Medicine2.jpg`, `my_data/Medicine_calib.txt`)
 
 The final outputs include recovered camera matrices, sparse 3D points, visibility-filtered mesh data, and model files that can be directly loaded into Blender.
 
@@ -51,6 +51,7 @@ TA:
 2. (Optional) Install Blender for model visualization.
 3. Open this folder in VS Code.
 4. Ensure the `data/` and `imgs/` folders contain the required inputs.
+5. For own photos (`Matcha`, `Medicine`), keep images and calibration in `my_data/`.
 
 > Note: Must install [MATLAB](https://www.mathworks.com/downloads/) and [Blender](https://www.blender.org/).
 
@@ -70,20 +71,27 @@ matlab -batch "results = sfm_main('Statue');"
 
 ```matlab
 results = sfm_main('Mesona');
-results = sfm_main('Snorlax');
+results = sfm_main('Statue');
+results = sfm_main('Matcha');
+results = sfm_main('Medicine');
 ```
 
 ## Generate calibration txt for new images
 
-If you add a new dataset (or more views), generate a Mesona-style calibration file:
+`generate_calib` now uses one simple call and chooses the best method automatically:
+
+1. Try checkerboard calibration first (if checkerboard images are available).
+2. Fallback to FOV approximation when checkerboard data is unavailable.
+
+Example:
 
 ```matlab
-% Generate K1..K5 from Snorlax1.jpg ~ Snorlax5.jpg
-generate_calib_from_images('Snorlax', 'NumCameras', 5, 'HorizontalFovDeg', 69, 'Overwrite', true);
+Klist = generate_calib('Matcha');
 ```
 
-This writes `data/Snorlax_calib.txt` with `Camera A/B/...` and `K1/K2/...` blocks.
-Current `sfm_main` uses `K1` and `K2` for two-view reconstruction.
+The file is written to the dataset folder by default (`my_data/` or `data/`) with
+`Camera A/B/...` and `K1/K2/...` blocks. Current `sfm_main` uses `K1` and `K2`
+for two-view reconstruction.
 
 ## Output detail
 

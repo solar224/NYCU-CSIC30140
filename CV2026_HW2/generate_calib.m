@@ -1,20 +1,68 @@
-function Klist = generate_calib(datasetName, varargin)
-%GENERATE_CALIB Create calibration txt from image sizes.
-%   Klist = generate_calib('Matcha')
-%   Klist = generate_calib('Matcha', 'NumCameras', 5, ...
-%       'HorizontalFovDeg', 69, 'Overwrite', true)
+function Klist = generate_calib(datasetName)
+%GENERATE_CALIB Create calibration txt using one simple entrypoint.
+%   Klist = generate_calib('Matcha') or generate_calib("Matcha") will create Matcha_calib.txt in the same directory as the dataset images.
 %
-% Output format follows Mesona/Statue style and is written to:
-%   data/<datasetName>_calib.txt
+% Strategy:
+% 1) Find dataset images (my_data first, then data).
+% 2) Try checkerboard-based calibration (best quality) if checkerboard images exist.
+% 3) Fallback to FOV approximation when checkerboard data is unavailable.
+%
+% Output:
+%   <dataset_dir>/<datasetName>_calib.txt
 
 if nargin < 1 || isempty(datasetName)
     error('datasetName is required, e.g., ''Matcha''.');
 end
 
-opts = parseOptions(varargin{:});
+datasetName = char(string(datasetName));
 baseDir = fileparts(mfilename('fullpath'));
 dataDir = fullfile(baseDir, 'data');
+myDataDir = fullfile(baseDir, 'my_data');
 
+[datasetRoot, files] = resolveDatasetImages(datasetName, myDataDir, dataDir);
+if numel(files) < 2
+    error('Need at least 2 images for %s, but only found %d in %s.', datasetName, numel(files), datasetRoot);
+end
+
+% HW2 is two-view SfM, so keep exactly 2 camera blocks.
+numCameras = 2;
+files = files(1:numCameras);
+firstImagePath = fullfile(files(1).folder, files(1).name);
+
+[K, methodUsed] = estimateBestIntrinsic(baseDir, datasetName, firstImagePath);
+Klist = repmat(K, [1, 1, numCameras]);
+
+calibPath = fullfile(datasetRoot, sprintf('%s_calib.txt', datasetName));
+writeCalib(calibPath, Klist);
+
+fprintf('Wrote calibration file: %s\n', calibPath);
+fprintf('Dataset images: %d (using first %d for K blocks)\n', numel(files), numCameras);
+fprintf('Calibration method: %s\n', methodUsed);
+end
+
+function [datasetRoot, files] = resolveDatasetImages(datasetName, myDataDir, dataDir)
+candidates = {myDataDir, dataDir};
+datasetRoot = '';
+files = [];
+
+for i = 1:numel(candidates)
+    rootDir = candidates{i};
+    if ~exist(rootDir, 'dir')
+        continue;
+    end
+
+    filesLocal = collectDatasetImages(rootDir, datasetName);
+    if ~isempty(filesLocal)
+        datasetRoot = rootDir;
+        files = filesLocal;
+        return;
+    end
+end
+
+error('No dataset images found for %s in my_data/ or data/.', datasetName);
+end
+
+function files = collectDatasetImages(rootDir, datasetName)
 patterns = {
     sprintf('%s*.jpg', datasetName), ...
     sprintf('%s*.JPG', datasetName), ...
@@ -28,54 +76,127 @@ patterns = {
 
 files = [];
 for i = 1:numel(patterns)
-    files = [files; dir(fullfile(dataDir, patterns{i}))]; %#ok<AGROW>
+    files = [files; dir(fullfile(rootDir, patterns{i}))]; %#ok<AGROW>
 end
 
 if isempty(files)
-    error('No images found for dataset %s in %s.', datasetName, dataDir);
+    return;
 end
 
-names = naturalSort({files.name});
-files = files(ismember({files.name}, names));
-
-if opts.NumCameras > numel(files)
-    error('Requested NumCameras=%d but only found %d images.', opts.NumCameras, numel(files));
+files = sortByNumericSuffix(files);
 end
 
-files = files(1:opts.NumCameras);
-Klist = zeros(3, 3, numel(files));
-
-for i = 1:numel(files)
-    imgPath = fullfile(files(i).folder, files(i).name);
-    info = imfinfo(imgPath);
-    w = double(info.Width);
-    h = double(info.Height);
-
-    % Approximate focal length from assumed horizontal FOV.
-    f = (w / 2) / tand(opts.HorizontalFovDeg / 2);
-    cx = (w - 1) / 2;
-    cy = (h - 1) / 2;
-
-    Klist(:, :, i) = [f, 0, cx; 0, f, cy; 0, 0, 1];
+function [K, methodUsed] = estimateBestIntrinsic(baseDir, datasetName, firstImagePath)
+if exist('detectCheckerboardPoints', 'file') == 2 && exist('estimateCameraParameters', 'file') == 2
+    [cbDir, cbFiles] = resolveCheckerboardImages(baseDir, datasetName);
+    if ~isempty(cbDir)
+        [K, ok] = estimateIntrinsicFromCheckerboard(cbDir, cbFiles);
+        if ok
+            methodUsed = 'checkerboard';
+            return;
+        end
+    end
 end
 
-calibPath = fullfile(dataDir, sprintf('%s_calib.txt', datasetName));
-if exist(calibPath, 'file') == 2 && ~opts.Overwrite
-    error('Calibration file already exists: %s (set Overwrite=true).', calibPath);
+K = estimateIntrinsicFromFov(firstImagePath, 69);
+methodUsed = 'fov-approx (fallback)';
+warning(['Checkerboard calibration was not available or failed. ', ...
+    'Used FOV approximation fallback (69 deg).']);
 end
 
-writeCalib(calibPath, Klist);
-fprintf('Wrote calibration file: %s\n', calibPath);
-fprintf('Detected %d image(s), generated %d camera block(s).\n', numel(names), size(Klist, 3));
+function [cbDir, cbFiles] = resolveCheckerboardImages(baseDir, datasetName)
+candidates = {
+    fullfile(baseDir, 'my_data', 'checkerboard', datasetName), ...
+    fullfile(baseDir, 'data', 'checkerboard', datasetName), ...
+    fullfile(baseDir, 'my_data', [datasetName '_checkerboard']), ...
+    fullfile(baseDir, 'data', [datasetName '_checkerboard'])
+};
+
+cbDir = '';
+cbFiles = [];
+for i = 1:numel(candidates)
+    d = candidates{i};
+    if ~exist(d, 'dir')
+        continue;
+    end
+
+    files = listImagesInDir(d);
+    if ~isempty(files)
+        cbDir = d;
+        cbFiles = files;
+        return;
+    end
+end
 end
 
-function opts = parseOptions(varargin)
-p = inputParser;
-p.addParameter('NumCameras', 2, @(x) isnumeric(x) && isscalar(x) && x >= 2);
-p.addParameter('HorizontalFovDeg', 69, @(x) isnumeric(x) && isscalar(x) && x > 10 && x < 170);
-p.addParameter('Overwrite', true, @(x) islogical(x) && isscalar(x));
-p.parse(varargin{:});
-opts = p.Results;
+function [K, ok] = estimateIntrinsicFromCheckerboard(cbDir, cbFiles)
+ok = false;
+K = eye(3);
+
+imgPaths = fullfile(cbDir, {cbFiles.name});
+[imagePoints, boardSize, imagesUsed] = detectCheckerboardPoints(imgPaths);
+if nnz(imagesUsed) < 3
+    return;
+end
+
+imgPaths = imgPaths(imagesUsed);
+imagePoints = imagePoints(:, :, imagesUsed);
+worldPoints = generateCheckerboardPoints(boardSize, 10);
+
+I0 = imread(imgPaths{1});
+imageSize = [size(I0, 1), size(I0, 2)];
+cameraParams = estimateCameraParameters(imagePoints, worldPoints, ...
+    'ImageSize', imageSize, 'WorldUnits', 'millimeters');
+
+if isprop(cameraParams, 'Intrinsics')
+    intr = cameraParams.Intrinsics;
+    if isprop(intr, 'K')
+        K = intr.K;
+    else
+        K = intr.IntrinsicMatrix';
+    end
+else
+    K = cameraParams.IntrinsicMatrix';
+end
+
+K = K / K(3, 3);
+ok = true;
+end
+
+function K = estimateIntrinsicFromFov(imgPath, fovDeg)
+info = imfinfo(imgPath);
+w = double(info.Width);
+h = double(info.Height);
+
+f = (w / 2) / tand(fovDeg / 2);
+cx = (w - 1) / 2;
+cy = (h - 1) / 2;
+K = [f, 0, cx; 0, f, cy; 0, 0, 1];
+end
+
+function files = listImagesInDir(dirPath)
+patterns = {'*.jpg', '*.JPG', '*.jpeg', '*.JPEG', '*.png', '*.PNG', '*.bmp', '*.BMP'};
+files = [];
+for i = 1:numel(patterns)
+    files = [files; dir(fullfile(dirPath, patterns{i}))]; %#ok<AGROW>
+end
+if ~isempty(files)
+    files = sortByNumericSuffix(files);
+end
+end
+
+function files = sortByNumericSuffix(files)
+names = {files.name};
+keys = inf(numel(names), 1);
+for i = 1:numel(names)
+    tok = regexp(names{i}, '\\d+', 'match', 'once');
+    if ~isempty(tok)
+        keys(i) = str2double(tok);
+    end
+end
+
+[~, idx] = sortrows([keys, (1:numel(names))']);
+files = files(idx);
 end
 
 function writeCalib(calibPath, Klist)
@@ -104,19 +225,4 @@ if i <= 26
 else
     label = sprintf('C%d', i);
 end
-end
-
-function sorted = naturalSort(names)
-keys = zeros(numel(names), 1);
-for i = 1:numel(names)
-    token = regexp(names{i}, '\d+', 'match', 'once');
-    if isempty(token)
-        keys(i) = inf;
-    else
-        keys(i) = str2double(token);
-    end
-end
-
-[~, idx] = sortrows([keys, (1:numel(names))']);
-sorted = names(idx);
 end

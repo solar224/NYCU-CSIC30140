@@ -24,13 +24,14 @@ end
 
 baseDir = fileparts(mfilename('fullpath'));
 dataDir = fullfile(baseDir, 'data');
+myDataDir = fullfile(baseDir, 'my_data');
 addpath(baseDir);
 
 if ~exist(outputDir, 'dir')
     mkdir(outputDir);
 end
 
-[imgPath1, imgPath2, calibPath] = getDatasetPaths(dataDir, datasetName);
+[imgPath1, imgPath2, calibPath] = getDatasetPaths(dataDir, myDataDir, datasetName);
 I1 = imread(imgPath1);
 I2 = imread(imgPath2);
 rng(0, 'twister');
@@ -76,6 +77,11 @@ showMatchedFeatures(I1, I2, p1In, p2In, 'montage');
 title('Inlier Matches');
 saveas(inlierFig, fullfile(outputDir, '02_inlier_matches.png'));
 close(inlierFig);
+
+% Epipolar-line visualization required by HW spec.
+epiFig = visualizeEpipolarLines(I1, I2, F, p1In, p2In);
+saveas(epiFig, fullfile(outputDir, '02b_epipolar_lines.png'));
+close(epiFig);
 
 % 3) Read K and compute E
 [K1, K2] = readCalibration(calibPath);
@@ -153,7 +159,7 @@ fprintf('Done. Outputs written to: %s\n', outputDir);
 
 end
 
-function [imgPath1, imgPath2, calibPath] = getDatasetPaths(dataDir, datasetName)
+function [imgPath1, imgPath2, calibPath] = getDatasetPaths(dataDir, myDataDir, datasetName)
 name = lower(strtrim(datasetName));
 switch name
     case 'mesona'
@@ -165,13 +171,13 @@ switch name
         imgPath2 = fullfile(dataDir, 'Statue2.bmp');
         calibPath = fullfile(dataDir, 'Statue_calib.txt');
     case 'matcha'
-        imgPath1 = fullfile(dataDir, 'Matcha1.jpg');
-        imgPath2 = fullfile(dataDir, 'Matcha2.jpg');
-        calibPath = fullfile(dataDir, 'Matcha_calib.txt');
+        imgPath1 = fullfile(myDataDir, 'Matcha1.jpg');
+        imgPath2 = fullfile(myDataDir, 'Matcha2.jpg');
+        calibPath = fullfile(myDataDir, 'Matcha_calib.txt');
     case 'medicine'
-        imgPath1 = fullfile(dataDir, 'Medicine1.jpg');
-        imgPath2 = fullfile(dataDir, 'Medicine2.jpg');
-        calibPath = fullfile(dataDir, 'Medicine_calib.txt');
+        imgPath1 = fullfile(myDataDir, 'Medicine1.jpg');
+        imgPath2 = fullfile(myDataDir, 'Medicine2.jpg');
+        calibPath = fullfile(myDataDir, 'Medicine_calib.txt');
     otherwise
         error('Unknown datasetName: %s (use ''Mesona'' or ''Statue'' or ''Matcha'' or ''Medicine'')', datasetName);
 end
@@ -179,6 +185,119 @@ end
 if ~exist(imgPath1, 'file') || ~exist(imgPath2, 'file') || ~exist(calibPath, 'file')
     error('Missing required data files for dataset: %s', datasetName);
 end
+end
+
+function figHandle = visualizeEpipolarLines(I1, I2, F, p1, p2)
+maxLines = 40;
+N = size(p1, 1);
+if N < 1
+    error('No points available for epipolar visualization.');
+end
+
+if N > maxLines
+    idx = round(linspace(1, N, maxLines));
+else
+    idx = 1:N;
+end
+
+p1v = p1(idx, :);
+p2v = p2(idx, :);
+p1h = [p1v, ones(size(p1v, 1), 1)]';
+p2h = [p2v, ones(size(p2v, 1), 1)]';
+
+lines2 = (F * p1h)';
+lines1 = (F' * p2h)';
+
+figHandle = figure('Name', 'Epipolar lines');
+subplot(1, 2, 1);
+drawLinesAndPoints(I1, lines1, p1v, 'Image 1 with epipolar lines');
+
+subplot(1, 2, 2);
+drawLinesAndPoints(I2, lines2, p2v, 'Image 2 with epipolar lines');
+end
+
+function drawLinesAndPoints(I, lines, points, ttl)
+imshow(I);
+hold on;
+title(ttl);
+
+[h, w, ~] = size(I);
+colors = linespaceColors(size(lines, 1));
+
+for i = 1:size(lines, 1)
+    l = lines(i, :);
+    [ok, ptA, ptB] = lineSegmentInImage(l, w, h);
+    if ok
+        plot([ptA(1), ptB(1)], [ptA(2), ptB(2)], 'Color', colors(i, :), 'LineWidth', 1.2);
+    end
+end
+
+plot(points(:, 1), points(:, 2), 'wo', 'MarkerSize', 4, 'LineWidth', 1.0);
+hold off;
+end
+
+function [ok, pA, pB] = lineSegmentInImage(l, w, h)
+a = l(1);
+b = l(2);
+c = l(3);
+ok = false;
+pA = [0, 0];
+pB = [0, 0];
+
+if abs(a) < eps && abs(b) < eps
+    return;
+end
+
+pts = zeros(4, 2);
+cnt = 0;
+
+if abs(b) > eps
+    y1 = -(a * 1 + c) / b;
+    if y1 >= 1 && y1 <= h
+        cnt = cnt + 1;
+        pts(cnt, :) = [1, y1];
+    end
+    yw = -(a * w + c) / b;
+    if yw >= 1 && yw <= h
+        cnt = cnt + 1;
+        pts(cnt, :) = [w, yw];
+    end
+end
+
+if abs(a) > eps
+    x1 = -(b * 1 + c) / a;
+    if x1 >= 1 && x1 <= w
+        cnt = cnt + 1;
+        pts(cnt, :) = [x1, 1];
+    end
+    xh = -(b * h + c) / a;
+    if xh >= 1 && xh <= w
+        cnt = cnt + 1;
+        pts(cnt, :) = [xh, h];
+    end
+end
+
+if cnt < 2
+    return;
+end
+
+pts = unique(round(pts(1:cnt, :), 6), 'rows', 'stable');
+if size(pts, 1) < 2
+    return;
+end
+
+pA = pts(1, :);
+pB = pts(2, :);
+ok = true;
+end
+
+function colors = linespaceColors(n)
+if n <= 0
+    colors = zeros(0, 3);
+    return;
+end
+
+colors = hsv(n);
 end
 
 function [p1, p2, figHandle, methodName] = detectAndMatchPoints(G1, G2)

@@ -50,7 +50,7 @@ TA:
 1. Install MATLAB (Install Computer Vision Toolbox in MATLAB).
 2. (Optional) Install Blender for model visualization.
 3. Open this folder in VS Code.
-4. Ensure the `data/` and `imgs/` folders contain the required inputs.
+4. Ensure the `data/` and `docs/imgs/` folders contain the required inputs.
 5. For own photos (`Matcha`, `Medicine`), keep images and calibration in `my_data/`.
 
 > Note: Must install [MATLAB](https://www.mathworks.com/downloads/) and [Blender](https://www.blender.org/).
@@ -118,4 +118,4 @@ for two-view reconstruction.
 
 ## How to use Blender
 
-See [Blender.md](./guide/Blender.md).
+See [Blender.md](./docs/Blender.md).
